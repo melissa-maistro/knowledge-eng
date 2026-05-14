@@ -12,7 +12,7 @@ from pathlib import Path
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from config import USDA_FOOD_CSV, USDA_NUTRIENT_CSV, USDA_FOOD_NUTRIENT_CSV, DATA_PROC, TRIPLE_NUTRIENTS
+from config import USDA_FOOD_CSV, USDA_CATEGORY_CSV, USDA_NUTRIENT_CSV, USDA_FOOD_NUTRIENT_CSV, DATA_PROC, TRIPLE_NUTRIENTS
 
 
 def load_nutrient_ids(nutrient_csv: Path) -> dict:
@@ -42,9 +42,23 @@ def run():
     DATA_PROC.mkdir(parents=True, exist_ok=True)
 
     # ── load foundation foods ─────────────────────────────────────────────────
-    print("Loading USDA food descriptions...")
-    foods = pd.read_csv(USDA_FOOD_CSV, usecols=["fdc_id","description","data_type"])
+    print("Loading USDA food descriptions and categories...")
+    foods = pd.read_csv(USDA_FOOD_CSV, usecols=["fdc_id","description","data_type","food_category_id"])
     foods = foods[foods["data_type"] == "foundation_food"].copy()
+    
+    if USDA_CATEGORY_CSV.exists():
+        categories = pd.read_csv(USDA_CATEGORY_CSV, usecols=["id", "description"]).rename(
+            columns={"id": "food_category_id", "description": "category"}
+        )
+        # Convert both to float to avoid dtype mismatch
+        foods["food_category_id"] = pd.to_numeric(foods["food_category_id"], errors="coerce")
+        categories["food_category_id"] = pd.to_numeric(categories["food_category_id"], errors="coerce")
+        foods = foods.merge(categories, on="food_category_id", how="left")
+        foods["category"] = foods["category"].fillna("Unknown")
+    else:
+        print(f"  {USDA_CATEGORY_CSV} not found, skipping categories.")
+        foods["category"] = "Unknown"
+        
     print(f"  {len(foods)} foundation foods loaded")
 
     if foods.empty:
@@ -101,10 +115,24 @@ def run():
     else:
         fn["nutrient"] = fn["nutrient_id"].astype(str)
 
-    # ── merge and save ────────────────────────────────────────────────────────
-    merged = fn.merge(foods[["fdc_id","description"]], on="fdc_id")
-    merged = merged[["fdc_id","description","nutrient","amount"]].dropna()
-    merged.columns = ["fdc_id","ingredient","nutrient","amount_per_100g"]
+    # ── merge and aggregate ───────────────────────────────────────────────────
+    merged = fn.merge(foods[["fdc_id","description","category"]], on="fdc_id")
+    merged = merged[["fdc_id","description","category","nutrient","amount"]].dropna()
+    merged.columns = ["fdc_id","ingredient","category","nutrient","amount_per_100g"]
+
+    # Deduplicate entries with exact same description by averaging the nutrients
+    print("Aggregating duplicates by taking the mean of nutrients...")
+    grouped = merged.groupby(["ingredient", "category", "nutrient"], as_index=False).agg({
+        "amount_per_100g": "mean",
+        "fdc_id": "first"  # keep the first ID for reference
+    })
+    merged = grouped[["fdc_id", "ingredient", "category", "nutrient", "amount_per_100g"]]
+    
+    # Save a clean ingredients list with categories
+    ingredients_df = grouped[["fdc_id", "ingredient", "category"]].drop_duplicates()
+    ing_out = DATA_PROC / "usda_ingredients.csv"
+    ingredients_df.to_csv(ing_out, index=False)
+    print(f"  Saved {len(ingredients_df)} unique ingredients to {ing_out}")
 
     out = DATA_PROC / "usda_nutrients.csv"
     merged.to_csv(out, index=False)

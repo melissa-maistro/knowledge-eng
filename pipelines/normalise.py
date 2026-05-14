@@ -42,64 +42,82 @@ def load_canonical() -> pd.DataFrame:
 # ── Step 2: match to USDA Foundation Foods via root name ─────────────────────
 
 def match_usda(canonical: pd.DataFrame) -> pd.DataFrame:
-    if not USDA_FOOD_CSV.exists():
-        print("  USDA food.csv not found — skipping")
+    USDA_INGREDIENTS_CSV = DATA_PROC / "usda_ingredients.csv"
+    if not USDA_INGREDIENTS_CSV.exists():
+        print("  usda_ingredients.csv not found — run usda.py first")
         canonical["usda_fdc_id"]      = None
         canonical["usda_description"] = None
+        canonical["usda_category"]    = None
         canonical["usda_match_score"] = None
         return canonical
 
-    usda       = pd.read_csv(USDA_FOOD_CSV, usecols=["fdc_id","description","data_type"])
-    foundation = usda[usda["data_type"] == "foundation_food"].copy()
+    foundation = pd.read_csv(USDA_INGREDIENTS_CSV)
+    # Rename ingredient to description to match existing logic
+    foundation = foundation.rename(columns={"ingredient": "description"})
 
-    # root = everything before the first comma, lowercased
-    # "Butter, stick, salted"  -> "butter"
-    # "Oil, olive, extra virgin" -> "oil"  (too generic — exact match only)
-    # "Cheese, cheddar"          -> "cheese"
+    # 1. root: "Butter, stick" -> "butter"
+    # 2. uninverted: "Oil, olive" -> "olive oil"
     foundation["desc_lower"] = foundation["description"].str.lower().str.strip()
     foundation["root"]       = foundation["desc_lower"].str.split(",").str[0].str.strip()
+    
+    def uninvert(text):
+        parts = [p.strip() for p in text.split(",")]
+        if len(parts) > 1:
+            return f"{parts[1]} {parts[0]}"
+        return parts[0]
+        
+    foundation["uninverted"] = foundation["desc_lower"].apply(uninvert)
 
-    roots      = foundation["root"].tolist()
-    root_index = foundation.reset_index(drop=True)
+    print(f"  {len(foundation)} Foundation Foods")
 
-    print(f"  {len(foundation)} Foundation Foods | {len(set(roots))} unique roots")
-
-    usda_fdc_ids, usda_descs, usda_scores = [], [], []
+    usda_fdc_ids, usda_descs, usda_categories, usda_scores = [], [], [], []
     exact_count = fuzzy_count = 0
+
+    roots = foundation["root"].tolist()
+    uninverteds = foundation["uninverted"].tolist()
+    
+    # We will match against uninverted strings using WRatio
+    search_list = foundation["uninverted"].tolist()
+    search_index = foundation.reset_index(drop=True)
 
     for name_lower in canonical["canonical_name_lower"]:
 
-        # 1 — exact root match
-        exact = foundation[foundation["root"] == name_lower]
+        # 1 — exact root match OR exact uninverted match
+        exact = foundation[(foundation["root"] == name_lower) | (foundation["uninverted"] == name_lower)]
         if not exact.empty:
             row = exact.iloc[0]
             usda_fdc_ids.append(int(row["fdc_id"]))
             usda_descs.append(row["description"])
+            usda_categories.append(row["category"])
             usda_scores.append(100)
             exact_count += 1
             continue
 
-        # 2 — fuzzy root match (character ratio, not substring)
+        # 2 — fuzzy match using WRatio on uninverted string
+        # WRatio handles partial matches and different token orders much better than basic ratio
         result = process.extractOne(
-            name_lower, roots,
-            scorer=fuzz.ratio,
+            name_lower, search_list,
+            scorer=fuzz.WRatio,
             score_cutoff=FUZZY_THRESHOLD
         )
         if result:
-            matched_root, score, idx = result
-            row = root_index.iloc[idx]
+            matched_str, score, idx = result
+            row = search_index.iloc[idx]
             usda_fdc_ids.append(int(row["fdc_id"]))
             usda_descs.append(row["description"])
+            usda_categories.append(row["category"])
             usda_scores.append(round(score, 2))
             fuzzy_count += 1
             continue
 
         usda_fdc_ids.append(None)
         usda_descs.append(None)
+        usda_categories.append(None)
         usda_scores.append(None)
 
     canonical["usda_fdc_id"]      = usda_fdc_ids
     canonical["usda_description"] = usda_descs
+    canonical["usda_category"]    = usda_categories
     canonical["usda_match_score"] = usda_scores
 
     total = exact_count + fuzzy_count

@@ -150,6 +150,33 @@ def run():
     merged["ingredient_a"] = merged["pair"].apply(lambda p: p[0])
     merged["ingredient_b"] = merged["pair"].apply(lambda p: p[1])
 
+    print("Applying strict category filter...")
+    if CANONICAL_FILE.exists():
+        canon = pd.read_csv(CANONICAL_FILE)
+        usda_cat = dict(zip(canon["canonical_name"], canon["usda_category"]))
+        fdb_cat  = dict(zip(canon["canonical_name"], canon["flavordb_category"]))
+
+        def category_match(a, b):
+            u_a, u_b = usda_cat.get(a), usda_cat.get(b)
+            f_a, f_b = fdb_cat.get(a), fdb_cat.get(b)
+
+            # 1. Strict USDA Category Match (if both are known)
+            if pd.notna(u_a) and pd.notna(u_b) and u_a != "Unknown" and u_b != "Unknown":
+                return u_a == u_b
+            
+            # 2. Fallback to FlavorDB Category Match
+            if pd.notna(f_a) and pd.notna(f_b):
+                return f_a == f_b
+                
+            return False
+
+        merged["valid_category"] = merged.apply(lambda r: category_match(r.ingredient_a, r.ingredient_b), axis=1)
+        before_count = len(merged)
+        merged = merged[merged["valid_category"]].copy()
+        print(f"  Filtered out {before_count - len(merged)} pairs due to category mismatch.")
+    else:
+        print("  WARNING: canonical_ingredients.csv not found, skipping category filter.")
+
     merged["score"] = (
         W_FLAVOUR      * merged["flavour_score"] +
         W_NUTRITION    * merged["nutrition_score"] +
