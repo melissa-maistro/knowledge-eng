@@ -50,7 +50,7 @@ recipe_substitution/
 │   ├── similarity.py           ← computes SIMILAR_TO edges (run after all pipelines)
 │   ├── query.py                ← in-memory query layer, test substitution suggestions
 │   └── load.py                 ← optional: bulk import into Neo4j
-└── notebooks/                  ← put EDA notebooks here
+└── notebooks/                  ← optional
 ```
 
 ---
@@ -64,7 +64,7 @@ recipe_substitution/
 | **Open Food Facts** | Allergen and intolerance tags on packaged products | ~9 GB | ODbL |
 | **Food.com** (Kaggle) | Ingredient co-occurrence and cuisine tags from 230k recipes | ~200 MB | Kaggle |
 
-FlavorDB was scraped using a separate script (`flavordb_scrape.py`, not in this repo). The three output CSVs should be placed in `data/raw/flavordb/`.
+FlavorDB was scraped using a separate script (`flavordb_scrape.py`, not in this repo). The three output CSVs should be placed in `data/raw/`.
 
 ---
 
@@ -177,7 +177,7 @@ python graph/query.py               # test queries
 | Open Food Facts CSV | https://world.openfoodfacts.org/data | `data/raw/` |
 | Food.com RAW_recipes.csv | https://www.kaggle.com/datasets/shuyangli94/food-com-recipes-and-user-interactions | `data/raw/` |
 
-FlavorDB CSVs should already be in `data/raw/` — ask the person who ran the scraper.
+FlavorDB CSVs should already be in `data/raw/`.
 
 ---
 
