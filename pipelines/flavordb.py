@@ -18,9 +18,9 @@ from config import (DATA_PROC, DATA_TRIP,
                     FLAVORDB_LINKS_CSV)
 
 # ── Point these at wherever your scraper saved the files ─────────────────────
-SOURCE_ENTITIES  = Path("data/raw/flavordb/flavordb_entities.csv")
-SOURCE_MOLECULES = Path("data/raw/flavordb/flavordb_molecules.csv")
-SOURCE_LINKS     = Path("data/raw/flavordb/flavordb_links.csv")
+SOURCE_ENTITIES  = Path("data/raw/flavordb_entities.csv")
+SOURCE_MOLECULES = Path("data/raw/flavordb_molecules.csv")
+SOURCE_LINKS     = Path("data/raw/flavordb_links.csv")
 # ─────────────────────────────────────────────────────────────────────────────
 
 def run():

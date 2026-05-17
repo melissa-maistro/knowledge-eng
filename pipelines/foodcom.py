@@ -4,7 +4,7 @@ Extracts ingredient co-occurrence and cuisine tags from Food.com recipes.
 
 Download first (requires free Kaggle account):
   https://www.kaggle.com/datasets/shuyangli94/food-com-recipes-and-user-interactions
-  -> RAW_recipes.csv -> place in data/raw/foodcom/
+  -> RAW_recipes.csv -> place in data/raw/
 """
 import sys, ast
 from pathlib import Path

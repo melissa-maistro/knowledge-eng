@@ -5,7 +5,7 @@ Extracts allergen data from Open Food Facts bulk CSV.
 Download first:
   https://world.openfoodfacts.org/data
   -> en.openfoodfacts.org.products.csv.gz  (~9 GB uncompressed)
-  -> Place in data/raw/off/
+  -> Place in data/raw/
 """
 import sys
 from pathlib import Path

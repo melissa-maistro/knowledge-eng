@@ -5,7 +5,7 @@ Filters to foundation_food only — clean whole-ingredient entries.
 Reads food_nutrient.csv in chunks to handle large file sizes.
 
 Download from: https://fdc.nal.usda.gov/download-datasets
-Place food.csv, nutrient.csv, food_nutrient.csv in data/raw/usda/
+Place food.csv, nutrient.csv, food_nutrient.csv, food_category.csv in data/raw/
 """
 import sys
 from pathlib import Path

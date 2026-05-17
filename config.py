@@ -11,7 +11,7 @@ DATA_TRIP  = ROOT / "data" / "triples"
 
 # ── USDA ──────────────────────────────────────────────────────────────────────
 # Download: https://fdc.nal.usda.gov/download-datasets -> Foundation Foods ZIP
-# Unzip into data/raw/usda/
+# Unzip into data/raw/
 USDA_DIR               = DATA_RAW
 USDA_FOOD_CSV          = USDA_DIR / "food.csv"
 USDA_CATEGORY_CSV      = USDA_DIR / "food_category.csv"
@@ -26,14 +26,14 @@ FLAVORDB_LINKS_CSV     = DATA_PROC / "flavordb_links.csv"
 
 # ── Open Food Facts ───────────────────────────────────────────────────────────
 # Download: https://world.openfoodfacts.org/data
-# -> en.openfoodfacts.org.products.csv.gz (~9 GB uncompressed)
-# Place in data/raw/off/
+# -> en.openfoodfacts.org.products.csv (~9 GB uncompressed)
+# Place in data/raw/
 OFF_DIR = DATA_RAW
-OFF_CSV = OFF_DIR / "en.openfoodfacts.org.products.csv.gz"
+OFF_CSV = OFF_DIR / "en.openfoodfacts.org.products.csv"
 
 # ── Food.com ──────────────────────────────────────────────────────────────────
 # Download: https://www.kaggle.com/datasets/shuyangli94/food-com-recipes-and-user-interactions
-# Place RAW_recipes.csv in data/raw/foodcom/
+# Place RAW_recipes.csv in data/raw/
 FOODCOM_DIR     = DATA_RAW
 FOODCOM_RECIPES = FOODCOM_DIR / "RAW_recipes.csv"
 
