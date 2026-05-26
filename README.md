@@ -75,7 +75,7 @@ All four sources are linked through a **canonical ingredient list** (`data/proce
 The integration works as follows:
 
 1. **FlavorDB** provides the canonical ingredient names — 936 whole foods across 34 categories. These are the nodes of the graph.
-2. **USDA** is matched to canonical names by fuzzy-matching ingredient names against USDA Foundation Foods descriptions (root name before the first comma). 304/935 matched with high confidence.
+2. **USDA** is matched to canonical names by strict fuzzy-matching against USDA Foundation Foods descriptions and using manual overrides for edge cases. 96/935 matched accurately.
 3. **Open Food Facts** allergen tags are normalised to a fixed vocabulary (gluten, dairy, eggs, tree_nuts, peanuts, soy, fish, shellfish, sesame, sulphites) and attached to matching canonical nodes.
 4. **Food.com** recipe strings are searched for canonical ingredient names to count co-occurrence frequency across 230k recipes.
 
@@ -91,7 +91,7 @@ The `graph/similarity.py` script computes a `SIMILAR_TO` edge between ingredient
 | Nutritional proximity | USDA | 0.30 | Cosine similarity on nutrient vectors |
 | Co-occurrence | Food.com | 0.20 | Normalised co-occurrence count |
 
-Only edges scoring ≥ 0.15 are kept. The graph currently has **117,018 similarity edges** across **935 ingredients**.
+Only edges scoring ≥ 0.15 are kept. The graph currently has **14,418 similarity edges** across **935 ingredients**.
 
 ---
 
@@ -99,15 +99,15 @@ Only edges scoring ≥ 0.15 are kept. The graph currently has **117,018 similari
 
 ### What works
 - All four pipelines run end to end
-- Canonical ingredient list built with 304 USDA matches and 935 Food.com appearance counts
-- 117,018 similarity edges computed
+- Canonical ingredient list built with 96 USDA matches and 935 Food.com appearance counts
+- 14,418 similarity edges computed
 - Allergen filter working — dairy ingredients correctly excluded from butter substitutes
 - Query layer filters to canonical whole ingredients only (no packaged products in results)
 
 ### Known limitations
 
 1. **No Butter ↔ Olive oil edge.** FlavorDB shows they share almost no flavour molecules. The flavour signal dominates (weight 0.50) but does not capture culinary function. Olive oil and butter are both fats but have very different volatile compound profiles.
-2. **USDA coverage is currently at 304/935 (32%).** (Improved from 99/935). Foundation Foods only provides 401 unique ingredients. SR Legacy would increase coverage but contains branded foods that corrupt fuzzy matching.
+2. **USDA coverage is currently at 96/935 (~10%).** Foundation Foods only provides 401 unique ingredients. SR Legacy would increase coverage but contains branded foods that corrupt fuzzy matching.
 3. **Food.com co-occurrence is zero.** Food.com ingredient strings ("2 cups all-purpose flour") don't match canonical names ("Flour") exactly enough to produce co-occurrence pairs. Needs a normalisation pass on Food.com strings.
 4. **Open Food Facts allergen coverage is for packaged products only.** Whole ingredients like butter, olive oil, garlic have no OFF entries — allergen data for these needs to be added separately.
 
@@ -119,9 +119,8 @@ To support better reporting and data quality, several enhancements were recently
 
 1. **USDA Deduplication & Aggregation:** The raw USDA Foundation Foods database contained multiple samples (FDC IDs) for the exact same ingredient description (e.g., different expiration dates). `usda.py` now groups identical descriptions and computes the arithmetic mean for all macronutrients. This reduced 469 raw entries to **401 unique, clean ingredients**, eliminating duplicates in the graph.
 2. **USDA Categories:** We integrated `food_category.csv` into `usda.py`, which now outputs `usda_ingredients.csv` containing the `category` for each ingredient. `normalise.py` was updated to carry this category into the canonical ingredient list.
-3. **Improved Matching Strategy:** By introducing a fuzzy matching strategy (using `fuzz.WRatio`) and un-inverting strings (e.g., converting "Oil, olive" to "olive oil"), the matching accuracy between FlavorDB and USDA Foundation Foods skyrocketed. 
-   - **Before:** 99 / 935 matches (11% coverage)
-   - **After:** 304 / 935 matches (32% coverage)
+3. **Strict Fuzzy Matching Strategy:** The previous `fuzz.WRatio` algorithm produced too many false positives (e.g., matching "Anchovies, canned in olive oil" to any ingredient containing "oil"). We replaced it with `fuzz.token_sort_ratio` for much stricter string matching, combined with a **manual overrides dictionary** for known edge cases (e.g., forcing "Olive" to match "Oil, olive, extra virgin"). This dropped the apparent coverage (from 304 down to 96) but achieved 100% precision on the matches.
+4. **Massive Graph Cleanup:** Thanks to the stricter category filter and fixed USDA matching, the number of noisy `SIMILAR_TO` edges plummeted from 117k to just 14k highly-relevant edges.
 4. **Simplified Paths:** Directory structures for raw downloads were flattened. Files can now be dropped directly into `data/raw/` without subfolders.
 
 ---

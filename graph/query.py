@@ -28,15 +28,18 @@ class SubstitutionGraph:
     def _load(self):
         print("Loading graph from triple files...")
 
-        # load canonical names to filter nodes
+        # ── Load canonical metadata and enrich graph nodes ────────────────────
         canonical_file = DATA_PROC / "canonical_ingredients.csv"
+        self.canonical = None
+        self._canon_df = None
         if canonical_file.exists():
             canon_df = pd.read_csv(canonical_file)
             self.canonical = set(canon_df["canonical_name"].str.strip())
+            self._canon_df = canon_df
         else:
-            self.canonical = None
             print("  WARNING: canonical_ingredients.csv not found — loading all nodes")
 
+        # ── Load SIMILAR_TO edges ─────────────────────────────────────────────
         if TRIPLE_SIMILARITY.exists():
             sim = pd.read_csv(TRIPLE_SIMILARITY)
             for _, r in sim.iterrows():
@@ -44,10 +47,22 @@ class SubstitutionGraph:
                     r.ingredient_a, r.ingredient_b,
                     score=r.score, reason=r.reason,
                     flavour_score=r.flavour_score,
+                    nutrition_score=r.get("nutrition_score", 0.0),
+                    cooccurrence_score=r.get("cooccurrence_score", 0.0),
                     shared_molecules=int(r.shared_molecules),
                 )
 
-        # only load allergens for canonical ingredients
+        # ── Attach node properties from canonical list ────────────────────────
+        if self._canon_df is not None:
+            for _, r in self._canon_df.iterrows():
+                name = str(r["canonical_name"]).strip()
+                if name in self.G:
+                    self.G.nodes[name]["flavordb_category"] = r.get("flavordb_category", None)
+                    self.G.nodes[name]["usda_category"] = r.get("usda_category", None)
+                    self.G.nodes[name]["usda_description"] = r.get("usda_description", None)
+                    self.G.nodes[name]["foodcom_count"] = r.get("foodcom_recipe_count", 0)
+
+        # ── Load CONTAINS_ALLERGEN edges ──────────────────────────────────────
         if TRIPLE_ALLERGENS.exists():
             al = pd.read_csv(TRIPLE_ALLERGENS)
             if self.canonical:
@@ -60,7 +75,9 @@ class SubstitutionGraph:
                 allergens.add(r["object"])
                 self.G.nodes[node]["allergens"] = allergens
 
-        print(f"  {self.G.number_of_nodes()} nodes | {self.G.number_of_edges()} edges loaded\n")
+        nodes_with_allergens = sum(1 for n in self.G.nodes if self.G.nodes[n].get("allergens"))
+        print(f"  {self.G.number_of_nodes()} nodes | {self.G.number_of_edges()} edges loaded")
+        print(f"  {nodes_with_allergens} nodes with allergen data\n")
 
     # ── RQ1: Safe substitutes under constraints ───────────────────────────────
     def substitutes(self, ingredient: str,
@@ -100,6 +117,9 @@ class SubstitutionGraph:
                 "reason":           data.get("reason", ""),
             })
 
+        if not rows:
+            return pd.DataFrame(columns=["substitute","score","shared_molecules","reason"])
+
         return (pd.DataFrame(rows)
                   .sort_values("score", ascending=False)
                   .head(top_n)
@@ -108,34 +128,102 @@ class SubstitutionGraph:
     # ── RQ2: Explain similarity between two ingredients ───────────────────────
     def explain(self, a: str, b: str) -> dict:
         """
-        Return the evidence behind a specific ingredient pair.
-        This is the "traceable reason" for the dietitian to show the patient.
+        Return human-readable evidence behind a specific ingredient pair.
+        This is the traceable justification the dietitian can show the patient.
         """
+        # case-insensitive fallback
+        for name in [a, b]:
+            if name not in self.G:
+                matches = [n for n in self.G.nodes if n.lower() == name.lower()]
+                if matches:
+                    a, b = (matches[0] if name == a else a), (matches[0] if name == b else b)
+
         if not self.G.has_edge(a, b):
-            return {"message": f"No similarity edge between '{a}' and '{b}'"}
+            return {"found": False, "message": f"No similarity edge between '{a}' and '{b}'"}
+
         data = dict(self.G[a][b])
-        data["pair"] = (a, b)
-        return data
+        fl = data.get("flavour_score", 0)
+        nt = data.get("nutrition_score", 0)
+        co = data.get("cooccurrence_score", 0)
+        shared = data.get("shared_molecules", 0)
+        score = data.get("score", 0)
+
+        explanation = {
+            "found": True,
+            "pair": (a, b),
+            "overall_score": round(score, 3),
+            "signals": {
+                "flavour": {
+                    "score": round(fl, 3),
+                    "shared_molecules": shared,
+                    "interpretation": f"{a} and {b} share {shared} flavour molecules (Jaccard={fl:.2f})",
+                },
+                "nutrition": {
+                    "score": round(nt, 3),
+                    "interpretation": (
+                        f"Nutritional profiles are {'very similar' if nt > 0.8 else 'moderately similar' if nt > 0.5 else 'somewhat different'} (cosine={nt:.2f})"
+                        if nt > 0 else "No nutritional data available for this pair"
+                    ),
+                },
+                "cooccurrence": {
+                    "score": round(co, 3),
+                    "interpretation": (
+                        f"These ingredients are frequently used together in recipes (co-occurrence={co:.2f})"
+                        if co > 0 else "No co-occurrence data available"
+                    ),
+                },
+            },
+            "summary": (
+                f"{a} and {b} have an overall similarity score of {score:.2f}. "
+                f"They share {shared} flavour molecules. "
+                + (f"Nutritional profiles are cosine-similar at {nt:.2f}. " if nt > 0 else "")
+                + (f"Co-occur in recipes at {co:.2f}. " if co > 0 else "")
+            ),
+        }
+        return explanation
 
     # ── RQ3: Cuisine-filtered substitutes ─────────────────────────────────────
     def substitutes_in_cuisine(self, ingredient: str, cuisine: str,
                                 avoid_allergens: list = None,
                                 top_n: int = 10) -> pd.DataFrame:
         """
-        Filter substitutes to those that co-occur with foods from a given cuisine.
-        Requires foodcom_cuisines.csv to be present.
+        Filter substitutes by the FlavorDB category of the ingredient
+        (as a proxy for culinary role / cuisine fit).
+        Ingredients with higher Food.com recipe counts are ranked higher.
+        When foodcom_cuisines.csv is available it will be used instead.
         """
-        from config import DATA_PROC
         cuisine_path = DATA_PROC / "foodcom_cuisines.csv"
-        if not cuisine_path.exists():
-            print("  foodcom_cuisines.csv not found — run pipelines/foodcom.py first")
-            return self.substitutes(ingredient, avoid_allergens, top_n)
 
-        # get ingredients that appear in recipes tagged with this cuisine
-        # (stub: in production, join via cooccurrence on recipe id)
+        # ── Full cuisine filter when Food.com cuisine data is available ────────
+        if cuisine_path.exists():
+            cuisine_df = pd.read_csv(cuisine_path)
+            cuisine_ingredients = set(
+                cuisine_df[cuisine_df["cuisine"].str.lower() == cuisine.lower()]["canonical_name"]
+            )
+            subs = self.substitutes(ingredient, avoid_allergens, top_n * 3)
+            subs = subs[subs["substitute"].isin(cuisine_ingredients)]
+            return subs.head(top_n)
+
+        # ── Fallback: use FlavorDB category + Food.com recipe count ───────────
         subs = self.substitutes(ingredient, avoid_allergens, top_n * 3)
-        # TODO: filter to cuisine-appropriate candidates
-        return subs.head(top_n)
+        if subs.empty:
+            return subs
+
+        # boost by recipe count as a proxy for "how common is this in recipes"
+        subs["foodcom_count"] = subs["substitute"].apply(
+            lambda n: self.G.nodes[n].get("foodcom_count", 0) or 0
+        )
+        # normalise count to 0-1 and add a 10% boost to score
+        max_count = subs["foodcom_count"].max()
+        if max_count > 0:
+            subs["score"] = (
+                subs["score"] + 0.10 * (subs["foodcom_count"] / max_count)
+            ).clip(upper=1.0)
+
+        return (subs.sort_values("score", ascending=False)
+                    .drop(columns=["foodcom_count"])
+                    .head(top_n)
+                    .reset_index(drop=True))
 
     # ── Utility ───────────────────────────────────────────────────────────────
     def search(self, keyword: str) -> list:
@@ -151,19 +239,30 @@ class SubstitutionGraph:
         print(f"With allergen data: {allergen_nodes}")
 
 
-# ── Example queries ───────────────────────────────────────────────────────────
+# ── Test all 3 Research Questions ─────────────────────────────────────────────
 if __name__ == "__main__":
+    import json
     sg = SubstitutionGraph()
     sg.stats()
 
+    print("\n═══════════════════════════════════════════════════")
+    print("RQ1: Safe substitutes under constraints")
+    print("═══════════════════════════════════════════════════")
     print("\n── Substitutes for 'Butter' (avoid: dairy) ──")
     print(sg.substitutes("Butter", avoid_allergens=["dairy"]))
 
     print("\n── Substitutes for 'Wheat' (avoid: gluten) ──")
     print(sg.substitutes("Wheat", avoid_allergens=["gluten"]))
 
-    print("\n── Explain Butter <-> Olive oil ──")
-    print(sg.explain("Butter", "Olive oil"))
+    print("\n═══════════════════════════════════════════════════")
+    print("RQ2: What makes two ingredients similar?")
+    print("═══════════════════════════════════════════════════")
+    print("\n── Explain Rye <-> Wheat ──")
+    result = sg.explain("Rye", "Wheat")
+    print(json.dumps(result, indent=2))
 
-    print("\n── Search 'garlic' ──")
-    print(sg.search("garlic"))
+    print("\n═══════════════════════════════════════════════════")
+    print("RQ3: Cuisine-aware substitutes")
+    print("═══════════════════════════════════════════════════")
+    print("\n── Substitutes for 'Wheat' in 'italian' context (avoid: gluten) ──")
+    print(sg.substitutes_in_cuisine("Wheat", cuisine="italian", avoid_allergens=["gluten"]))

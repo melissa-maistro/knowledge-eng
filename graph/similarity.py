@@ -87,7 +87,10 @@ def nutrition_similarity(canonical_names: set, top_n=10000) -> pd.DataFrame:
     for i in range(len(names)):
         for j in range(i+1, len(names)):
             s = float(sim[i, j])
-            if s > 0.5:
+            # 0.3 threshold (was 0.5): lower cutoff allows pairs with sparse USDA
+            # data (e.g. Butter has only fat recorded) to still form nutrition edges
+            # when their available macros are directionally similar.
+            if s > 0.3:
                 rows.append({
                     "ingredient_a": names[i], "ingredient_b": names[j],
                     "nutrition_score": round(s, 4)
@@ -150,24 +153,30 @@ def run():
     merged["ingredient_a"] = merged["pair"].apply(lambda p: p[0])
     merged["ingredient_b"] = merged["pair"].apply(lambda p: p[1])
 
-    print("Applying strict category filter...")
+    print("Applying category filter (functional_class > usda_category > flavordb_category)...")
     if CANONICAL_FILE.exists():
         canon = pd.read_csv(CANONICAL_FILE)
+        func_cat = dict(zip(canon["canonical_name"], canon.get("functional_class", pd.Series(dtype=str))))
         usda_cat = dict(zip(canon["canonical_name"], canon["usda_category"]))
         fdb_cat  = dict(zip(canon["canonical_name"], canon["flavordb_category"]))
 
         def category_match(a, b):
+            f_a, f_b = func_cat.get(a), func_cat.get(b)
             u_a, u_b = usda_cat.get(a), usda_cat.get(b)
-            f_a, f_b = fdb_cat.get(a), fdb_cat.get(b)
+            fa, fb   = fdb_cat.get(a),  fdb_cat.get(b)
 
-            # 1. Strict USDA Category Match (if both are known)
-            if pd.notna(u_a) and pd.notna(u_b) and u_a != "Unknown" and u_b != "Unknown":
-                return u_a == u_b
-            
-            # 2. Fallback to FlavorDB Category Match
+            # 1. Functional class (data-driven from macronutrients) — best signal
             if pd.notna(f_a) and pd.notna(f_b):
                 return f_a == f_b
-                
+
+            # 2. USDA category — if one or both have no functional_class
+            if pd.notna(u_a) and pd.notna(u_b):
+                return u_a == u_b
+
+            # 3. FlavorDB category — fallback for ingredients not in USDA
+            if pd.notna(fa) and pd.notna(fb):
+                return fa == fb
+
             return False
 
         merged["valid_category"] = merged.apply(lambda r: category_match(r.ingredient_a, r.ingredient_b), axis=1)
@@ -177,11 +186,15 @@ def run():
     else:
         print("  WARNING: canonical_ingredients.csv not found, skipping category filter.")
 
-    merged["score"] = (
-        W_FLAVOUR      * merged["flavour_score"] +
-        W_NUTRITION    * merged["nutrition_score"] +
-        W_COOCCURRENCE * merged["cooccurrence_score"]
-    ).round(4)
+    def compute_score(row):
+        base_score = W_FLAVOUR * row['flavour_score'] + W_NUTRITION * row['nutrition_score'] + W_COOCCURRENCE * row['cooccurrence_score']
+        # If we have NO nutritional data/similarity, penalize the score by 50%
+        # to prevent purely flavor-based noisy suggestions.
+        if row['nutrition_score'] == 0:
+            return base_score * 0.5
+        return base_score
+
+    merged["score"] = merged.apply(compute_score, axis=1).round(4)
 
     merged["reason"] = merged.apply(lambda r:
         f"Flavour:{r['flavour_score']:.2f} ({r['shared_molecules']} shared molecules); "
