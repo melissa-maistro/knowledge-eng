@@ -80,7 +80,7 @@ app.layout = dbc.Container([
                 "(fat ≥ 50 kcal%, carb ≥ 50 kcal%, protein ≥ 30 kcal%).",
             ], className="small mb-2"),
             html.P(
-                "The graph only connects ingredients within the same role category — "
+                "The graph only connects ingredients within the same role category: "
                 "fats substitute fats, proteins substitute proteins, carbs substitute carbs. "
                 "The badge next to the ingredient name shows the detected role.",
                 className="small mb-3",
@@ -96,7 +96,7 @@ app.layout = dbc.Container([
 
             html.H6("📉 Nutritional goals", className="fw-bold"),
             html.P(
-                "Goals do not change the ranking — they annotate results. "
+                "Goals do not change the ranking; they annotate results. "
                 "A ✅ improvement is shown when the substitute has less of the "
                 "selected nutrient than the original; ⚠️ when it has more.",
                 className="small mb-0",
@@ -156,7 +156,7 @@ app.layout = dbc.Container([
                         className="mb-3",
                     ),
 
-                    html.P("Nutritional goals — reduce:", className="fw-semibold small text-muted mb-1"),
+                    html.P("Nutritional goals (reduce):", className="fw-semibold small text-muted mb-1"),
                     dcc.Dropdown(
                         id="input-goals",
                         options=goal_options,
@@ -243,7 +243,7 @@ def update_results(n_clicks, ingredient, allergies, goals):
     hint = None
     if not allergies:
         hint = dbc.Alert([
-            "💡 No allergies selected — showing all nutritionally similar ingredients. ",
+            "💡 No allergies selected. Showing all nutritionally similar ingredients. ",
             html.Strong("Add an allergy to filter to safe alternatives."),
         ], color="info", className="mb-3 py-2 small", dismissable=True)
 
