@@ -61,6 +61,7 @@ class SubstitutionGraph:
                     self.G.nodes[name]["usda_category"] = r.get("usda_category", None)
                     self.G.nodes[name]["usda_description"] = r.get("usda_description", None)
                     self.G.nodes[name]["foodcom_count"] = r.get("foodcom_recipe_count", 0)
+                    self.G.nodes[name]["functional_class"] = r.get("functional_class", None)
 
         # ── Load CONTAINS_ALLERGEN edges ──────────────────────────────────────
         if TRIPLE_ALLERGENS.exists():
