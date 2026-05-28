@@ -155,14 +155,16 @@ def cooccurrence_similarity(canonical_names: set) -> pd.DataFrame:
         return pd.DataFrame(columns=["ingredient_a","ingredient_b","cooccurrence_score"])
 
     df = pd.read_csv(TRIPLE_COOCCURRENCE)
-    df = df[
-        df["ingredient_a"].isin(canonical_names) &
-        df["ingredient_b"].isin(canonical_names)
-    ]
+
+    # Food.com names are lowercase; canonical names are title-case.
+    # Build a case-insensitive lookup and normalise both columns.
+    lower_to_canon = {n.lower(): n for n in canonical_names}
+    df["ingredient_a"] = df["ingredient_a"].str.lower().map(lower_to_canon)
+    df["ingredient_b"] = df["ingredient_b"].str.lower().map(lower_to_canon)
+    df = df.dropna(subset=["ingredient_a", "ingredient_b"])
 
     if df.empty:
-        print("  No canonical pairs in co-occurrence data")
-        print("  (Food.com strings may need normalisation — run pipelines/normalise.py)")
+        print("  No canonical pairs in co-occurrence data after normalisation")
         return pd.DataFrame(columns=["ingredient_a","ingredient_b","cooccurrence_score"])
 
     max_count = df["cooccurrence_count"].max()

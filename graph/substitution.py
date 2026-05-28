@@ -16,6 +16,25 @@ NUTRIENT_MAP = {
     "carbs": "Carbohydrate, by difference",
 }
 
+# Units for each nutrient (for patient-facing display)
+NUTRIENT_UNITS = {
+    "Sodium, Na":                        "mg",
+    "Potassium, K":                      "mg",
+    "Calcium, Ca":                       "mg",
+    "Iron, Fe":                          "mg",
+    "Energy (Atwater General Factors)":  "kcal",
+    "Energy (Atwater Specific Factors)": "kcal",
+    "Energy":                            "kcal",
+}
+
+# Map recipe_context role → functional_class value used in the graph
+ROLE_TO_FUNCTIONAL_CLASS = {
+    "fat":     "fat_source",
+    "protein": "protein_source",
+    "carb":    "carb_source",
+    "starch":  "carb_source",
+}
+
 class PatientConsultation(SubstitutionGraph):
     def __init__(self):
         super().__init__()
@@ -47,6 +66,16 @@ class PatientConsultation(SubstitutionGraph):
                     
         print(f"  Loaded {nut_count} nutrient values for canonical nodes.")
 
+    def _filter_by_role(self, subs_df: pd.DataFrame, role: str) -> pd.DataFrame:
+        """Drop substitutes whose functional_class doesn't match the requested role."""
+        target_class = ROLE_TO_FUNCTIONAL_CLASS.get(role.lower() if role else "")
+        if not target_class:
+            return subs_df
+        def matches(node):
+            fc = self.G.nodes.get(node, {}).get("functional_class")
+            return fc == target_class or fc is None  # keep unknowns rather than drop them
+        return subs_df[subs_df["substitute"].apply(matches)]
+
     def ask(self, ingredient: str, patient: dict, recipe_context: dict, top_n: int = 5):
         """
         Patient-facing query layer.
@@ -54,10 +83,14 @@ class PatientConsultation(SubstitutionGraph):
         """
         avoid_allergens = patient.get("allergies", [])
         reduce_goals = patient.get("goals", {}).get("reduce", [])
-        
+        role = recipe_context.get("role", "")
+
         # 1. Get raw substitutes filtered strictly by allergies (unsafe to eat)
-        # Using the parent class's substitutes method
-        subs_df = self.substitutes(ingredient, avoid_allergens=avoid_allergens, top_n=top_n * 2)
+        subs_df = self.substitutes(ingredient, avoid_allergens=avoid_allergens, top_n=top_n * 3)
+
+        # 2. Filter by culinary role when specified
+        if role:
+            subs_df = self._filter_by_role(subs_df, role)
         
         if subs_df.empty:
             return f"No safe substitutes found for '{ingredient}' given the allergies: {avoid_allergens}."
@@ -107,11 +140,13 @@ class PatientConsultation(SubstitutionGraph):
                     
                     if target_val is not None and sub_val is not None:
                         delta = target_val - sub_val
+                        unit = NUTRIENT_UNITS.get(nut_key, "g")
+                        label = goal.replace('_', ' ')
                         if delta > 0:
-                            improvements.append(f"{goal.replace('_', ' ')} -{delta:.1f}g")
+                            improvements.append(f"{label} -{delta:.1f}{unit}")
                         elif delta < 0:
-                            warnings.append(f"Increases {goal.replace('_', ' ')} by {abs(delta):.1f}g")
-                            
+                            warnings.append(f"Increases {label} by {abs(delta):.1f}{unit}")
+
             if improvements:
                 reason_parts.append(f"Nutritional improvement: {', '.join(improvements)} per 100g.")
             if warnings:
@@ -132,8 +167,11 @@ class PatientConsultation(SubstitutionGraph):
         """
         avoid_allergens = patient.get("allergies", [])
         reduce_goals = patient.get("goals", {}).get("reduce", [])
-        
-        subs_df = self.substitutes(ingredient, avoid_allergens=avoid_allergens, top_n=top_n * 2)
+        role = recipe_context.get("role", "")
+
+        subs_df = self.substitutes(ingredient, avoid_allergens=avoid_allergens, top_n=top_n * 3)
+        if role:
+            subs_df = self._filter_by_role(subs_df, role)
         
         if subs_df.empty:
             return {
@@ -171,10 +209,12 @@ class PatientConsultation(SubstitutionGraph):
                     
                     if target_val is not None and sub_val is not None:
                         delta = target_val - sub_val
+                        unit = NUTRIENT_UNITS.get(nut_key, "g")
+                        label = goal.replace('_', ' ').capitalize()
                         if delta > 0:
-                            improvements.append(f"{goal.replace('_', ' ').capitalize()}: -{delta:.1f}g")
+                            improvements.append(f"{label}: -{delta:.1f}{unit}")
                         elif delta < 0:
-                            warnings.append(f"Increases {goal.replace('_', ' ')} by {abs(delta):.1f}g")
+                            warnings.append(f"Increases {goal.replace('_', ' ')} by {abs(delta):.1f}{unit}")
                             
             results.append({
                 "substitute": sub_node,
