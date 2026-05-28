@@ -46,6 +46,18 @@ NON_INGREDIENT_NAMES = {
     "Salmonidae", "Clupeinae", "Percoidei", "Perciformes", "Bivalvia",
     "Anguilliformes", "Gadiformes", "Scombridae", "Pleuronectidae",
     "Cetacea", "Cichlidae",
+    # Meat taxonomy labels (not specific cuts or animals)
+    "Anatidae", "Columbidae",
+    # Marine mammals — not part of the Western European food supply
+    "Beluga whale", "Bowhead whale", "Bearded seal", "Spotted seal",
+    "Ringed seal", "Steller sea lion", "Walrus", "True seal",
+    # Very exotic wild game outside typical home cooking context
+    "Great horned owl", "Polar bear", "Black bear", "Brown bear",
+    "Muskrat", "Opossum", "Raccoon", "Squirrel", "Green turtle",
+    # Non-food or industrial plant products
+    "Tobacco", "Creosote", "Storax", "Jute",
+    # Non-food marine life
+    "Ascidians", "Leather chiton", "Jellyfish",
 }
 
 
