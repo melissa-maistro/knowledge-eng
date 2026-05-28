@@ -27,6 +27,12 @@ FUZZY_THRESHOLD = 85   # minimum score for fuzzy root matching (using token_sort
 
 # ── Step 1: load FlavorDB entities as the canonical list ─────────────────────
 
+# FlavorDB categories that are not whole ingredients and must be excluded.
+# "dish"        — prepared meals (Burrito, Pizza, Lasagna, Hamburger…)
+# "essentialoil" — industrial flavor extracts not used in home cooking
+NON_INGREDIENT_CATEGORIES = {"dish", "essentialoil"}
+
+
 def load_canonical() -> pd.DataFrame:
     df = pd.read_csv(FLAVORDB_ENTITIES_CSV,
                      usecols=["entity_id","entity_alias_readable","category"])
@@ -35,6 +41,9 @@ def load_canonical() -> pd.DataFrame:
         "entity_id":             "flavordb_entity_id",
         "category":              "flavordb_category",
     })
+    before = len(df)
+    df = df[~df["flavordb_category"].isin(NON_INGREDIENT_CATEGORIES)].copy()
+    print(f"  Excluded {before - len(df)} non-ingredient entries (dish, essentialoil)")
     df["canonical_name_lower"] = df["canonical_name"].str.lower().str.strip()
     return df
 
