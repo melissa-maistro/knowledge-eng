@@ -86,7 +86,7 @@ def _map_nutrients_to_canonical(nt: pd.DataFrame) -> pd.DataFrame:
     return merged.drop(columns=["canonical_name", "usda_description"])
 
 
-def nutrition_similarity(canonical_names: set, top_n=10000) -> pd.DataFrame:
+def nutrition_similarity(canonical_names: set) -> pd.DataFrame:
     if not TRIPLE_NUTRIENTS.exists():
         print("  Nutrients file not found — skipping nutrition similarity")
         return pd.DataFrame(columns=["ingredient_a","ingredient_b","nutrition_score"])
@@ -107,15 +107,15 @@ def nutrition_similarity(canonical_names: set, top_n=10000) -> pd.DataFrame:
     for i in range(len(names)):
         for j in range(i+1, len(names)):
             s = float(sim[i, j])
-            # 0.3 threshold (was 0.5): lower cutoff allows pairs with sparse USDA
-            # data (e.g. Butter has only fat recorded) to still form nutrition edges
-            # when their available macros are directionally similar.
-            if s > 0.3:
+            # 0.05 threshold: fat-fat pairs (e.g. Butter ↔ Olive) have cosine ~0.10
+            # because their full profiles differ (dairy vitamins vs plant fat).
+            # A low threshold preserves discrimination within the fat category.
+            if s > 0.05:
                 rows.append({
                     "ingredient_a": names[i], "ingredient_b": names[j],
                     "nutrition_score": round(s, 4)
                 })
-    df = pd.DataFrame(rows).sort_values("nutrition_score", ascending=False).head(top_n)
+    df = pd.DataFrame(rows)
     print(f"  {len(df)} nutrition pairs")
     return df
 
@@ -225,11 +225,21 @@ def run():
             if pd.notna(f_a) and pd.notna(f_b):
                 if f_a != f_b:
                     return False
-                # fat_source and protein_source substitute freely across
-                # subcategories (dairy fat ↔ plant fat, chicken ↔ beef).
-                # carb_source and mixed require finer checks because
-                # "Vegetables" groups unrelated items (tuber vs fruit-berry).
-                if f_a in ("fat_source", "protein_source"):
+                if f_a == "fat_source":
+                    # Restrict to recognised fat categories so meats/fish/spices
+                    # with incidentally high fat don't pair with cooking fats.
+                    # Dairy fat ↔ plant fat (e.g. Butter ↔ Olive) is explicitly
+                    # allowed via the USDA/fdb fat-category sets.
+                    FAT_USDA = {"Fats and Oils", "Dairy and Egg Products",
+                                "Fruits and Fruit Juices"}
+                    FAT_FDB  = {"dairy", "plant", "plantderivative",
+                                "nutseed-nut", "nutseed-seed", "fruit"}
+                    a_ok = (pd.notna(u_a) and u_a in FAT_USDA) or (pd.notna(fa) and fa in FAT_FDB)
+                    b_ok = (pd.notna(u_b) and u_b in FAT_USDA) or (pd.notna(fb) and fb in FAT_FDB)
+                    if pd.notna(u_a) or pd.notna(fa):  # only gate when we have data
+                        return a_ok and b_ok
+                    return True
+                if f_a == "protein_source":
                     return True
 
             # 2. AND logic: when all four labels are available, require both

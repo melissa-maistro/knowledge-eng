@@ -83,7 +83,7 @@ class PatientConsultation(SubstitutionGraph):
         role = recipe_context.get("role", "")
 
         # 1. Get raw substitutes filtered strictly by allergies (unsafe to eat)
-        subs_df = self.substitutes(ingredient, avoid_allergens=avoid_allergens, top_n=top_n * 3)
+        subs_df = self.substitutes(ingredient, avoid_allergens=avoid_allergens, top_n=top_n * 10)
 
         # 2. Filter by culinary role when specified
         if role:
@@ -166,7 +166,7 @@ class PatientConsultation(SubstitutionGraph):
         reduce_goals = patient.get("goals", {}).get("reduce", [])
         role = recipe_context.get("role", "")
 
-        subs_df = self.substitutes(ingredient, avoid_allergens=avoid_allergens, top_n=top_n * 3)
+        subs_df = self.substitutes(ingredient, avoid_allergens=avoid_allergens, top_n=top_n * 10)
         if role:
             subs_df = self._filter_by_role(subs_df, role)
         

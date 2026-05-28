@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from config import DATA_PROC, FLAVORDB_ENTITIES_CSV, USDA_FOOD_CSV, FOODCOM_RECIPES, TRIPLE_NUTRIENTS
 
 OUT_FILE       = DATA_PROC / "canonical_ingredients.csv"
-FUZZY_THRESHOLD = 85   # minimum score for fuzzy root matching (using token_sort_ratio)
+FUZZY_THRESHOLD = 92   # minimum score for fuzzy root matching (using token_sort_ratio)
 
 
 # ── Step 1: load FlavorDB entities as the canonical list ─────────────────────
@@ -133,6 +133,10 @@ def match_usda(canonical: pd.DataFrame) -> pd.DataFrame:
     NO_USDA_MATCH = {
         "white wine", "red wine", "wine", "beer", "champagne",
         "spirit", "liqueur", "vodka", "rum", "whiskey",
+        # Short names that produce spurious fuzzy matches (e.g. "sage"→sausage,
+        # "tea"→beef, "pepper"→pepperoni, "dock"→haddock)
+        "sage", "tea", "pepper", "dock", "mustard oil", "oil palm",
+        "breakfast cereal",
     }
 
     for name_lower in canonical["canonical_name_lower"]:
@@ -283,6 +287,13 @@ def derive_functional_class(canonical: pd.DataFrame) -> pd.DataFrame:
 
     def classify(row):
         if row["total_kcal"] == 0:
+            return None
+        # Require at least 2 macros non-zero, unless it's a very energy-dense
+        # ingredient (>= 400 kcal) which is legitimately a pure fat source.
+        # Prevents sparse-data ingredients (e.g. a vegetable whose USDA record
+        # only has protein) from being misclassified as protein_source.
+        nonzero = (row["fat_g"] > 0) + (row["prot_g"] > 0) + (row["carb_g"] > 0)
+        if nonzero < 2 and row["total_kcal"] < 400:
             return None
         fat_pct  = row["fat_kcal"]  / row["total_kcal"]
         prot_pct = row["prot_kcal"] / row["total_kcal"]
