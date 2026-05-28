@@ -48,12 +48,81 @@ app.title = "Ingredient Substitution Advisor"
 
 app.layout = dbc.Container([
 
+    # ── Info modal ───────────────────────────────────────────────────────────
+    dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle("How substitutions are computed")),
+        dbc.ModalBody([
+            html.H6("📊 Match score", className="fw-bold mt-1"),
+            html.P(
+                "Each substitute receives a match score (0–100%) combining three signals:",
+                className="mb-2 small",
+            ),
+            dbc.Table([
+                html.Thead(html.Tr([
+                    html.Th("Signal", className="small"),
+                    html.Th("Weight", className="small"),
+                    html.Th("What it measures", className="small"),
+                ])),
+                html.Tbody([
+                    html.Tr([html.Td("Macro similarity"),   html.Td("90%"), html.Td("Cosine similarity of fat / protein / carb balance per 100 g")]),
+                    html.Tr([html.Td("Full nutrition"),      html.Td("5%"),  html.Td("Cosine similarity across the full micronutrient profile")]),
+                    html.Tr([html.Td("Recipe co-occurrence"),html.Td("5%"),  html.Td("How often the two ingredients appear together in Food.com recipes")]),
+                ]),
+            ], size="sm", bordered=True, className="small mb-3"),
+
+            html.H6("🍽️ Culinary role & category filtering", className="fw-bold"),
+            html.P([
+                "Every ingredient is automatically classified as a ",
+                html.Strong("🧈 Fat source"), ", ",
+                html.Strong("🥩 Protein source"), ", or ",
+                html.Strong("🌾 Carb source"),
+                " based on which macronutrient dominates its calorie profile "
+                "(fat ≥ 50 kcal%, carb ≥ 50 kcal%, protein ≥ 30 kcal%).",
+            ], className="small mb-2"),
+            html.P(
+                "The graph only connects ingredients within the same role category — "
+                "fats substitute fats, proteins substitute proteins, carbs substitute carbs. "
+                "The badge next to the ingredient name shows the detected role.",
+                className="small mb-3",
+            ),
+
+            html.H6("⚠️ Allergen filtering", className="fw-bold"),
+            html.P(
+                "When you select one or more allergies, any substitute flagged with "
+                "that allergen is removed before ranking. The EU Big-14 allergen "
+                "framework is used.",
+                className="small mb-3",
+            ),
+
+            html.H6("📉 Nutritional goals", className="fw-bold"),
+            html.P(
+                "Goals do not change the ranking — they annotate results. "
+                "A ✅ improvement is shown when the substitute has less of the "
+                "selected nutrient than the original; ⚠️ when it has more.",
+                className="small mb-0",
+            ),
+        ]),
+        dbc.ModalFooter(
+            dbc.Button("Close", id="btn-info-close", color="secondary", size="sm")
+        ),
+    ], id="modal-info", is_open=False, size="lg"),
+
     # ── Header ──────────────────────────────────────────────────────────────
     dbc.Row(dbc.Col(html.Div([
-        html.H2("🥗 Ingredient Substitution Advisor",
-                className="fw-bold mb-1", style={"color": TEAL}),
-        html.P("Personalised substitutions for dietary needs · Western European Dietetics Clinic",
-               className="text-muted small mb-0"),
+        dbc.Row([
+            dbc.Col([
+                html.H2("🥗 Ingredient Substitution Advisor",
+                        className="fw-bold mb-1", style={"color": TEAL}),
+                html.P("Personalised substitutions for dietary needs · Western European Dietetics Clinic",
+                       className="text-muted small mb-0"),
+            ]),
+            dbc.Col(
+                dbc.Button("ℹ️ How it works", id="btn-info-open",
+                           color="outline-secondary", size="sm",
+                           className="float-end mt-2"),
+                width="auto", className="d-flex align-items-center",
+            ),
+        ], align="center"),
     ], className="py-4"))),
 
     html.Hr(className="mt-0 mb-4"),
@@ -225,6 +294,17 @@ def update_results(n_clicks, ingredient, allergies, goals):
         cards.append(card)
 
     return html.Div([header, hint or html.Span(), *cards])
+
+
+@app.callback(
+    Output("modal-info", "is_open"),
+    Input("btn-info-open", "n_clicks"),
+    Input("btn-info-close", "n_clicks"),
+    State("modal-info", "is_open"),
+    prevent_initial_call=True,
+)
+def toggle_info_modal(open_clicks, close_clicks, is_open):
+    return not is_open
 
 
 if __name__ == "__main__":
