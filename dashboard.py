@@ -127,8 +127,8 @@ def update_results(n_clicks, ingredient, allergies, goals, role):
     # Auto-detect role from ingredient's functional_class
     resolved_role = role or ""
     if resolved_role == "auto":
-        fc = pc.G.nodes.get(ingredient, {}).get("functional_class", "")
-        resolved_role = (fc or "").replace("_source", "")  # "fat_source" → "fat"
+        fc = pc.G.nodes.get(ingredient, {}).get("functional_class")
+        resolved_role = (str(fc).replace("_source", "") if isinstance(fc, str) else "")
 
     patient = {
         "allergies": allergies or [],
