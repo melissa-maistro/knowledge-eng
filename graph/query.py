@@ -61,6 +61,7 @@ class SubstitutionGraph:
                     self.G.nodes[name]["usda_category"] = r.get("usda_category", None)
                     self.G.nodes[name]["usda_description"] = r.get("usda_description", None)
                     self.G.nodes[name]["foodcom_count"] = r.get("foodcom_recipe_count", 0)
+                    self.G.nodes[name]["functional_class"] = r.get("functional_class", None)
 
         # ── Load CONTAINS_ALLERGEN edges ──────────────────────────────────────
         if TRIPLE_ALLERGENS.exists():
@@ -144,6 +145,7 @@ class SubstitutionGraph:
         data = dict(self.G[a][b])
         fl = data.get("flavour_score", 0)
         nt = data.get("nutrition_score", 0)
+        mc = data.get("macro_score", 0)
         co = data.get("cooccurrence_score", 0)
         shared = data.get("shared_molecules", 0)
         score = data.get("score", 0)
@@ -162,7 +164,14 @@ class SubstitutionGraph:
                     "score": round(nt, 3),
                     "interpretation": (
                         f"Nutritional profiles are {'very similar' if nt > 0.8 else 'moderately similar' if nt > 0.5 else 'somewhat different'} (cosine={nt:.2f})"
-                        if nt > 0 else "No nutritional data available for this pair"
+                        if nt > 0 else "No full nutritional data available for this pair"
+                    ),
+                },
+                "macro": {
+                    "score": round(mc, 3),
+                    "interpretation": (
+                        f"Macro balance (protein/fat/carb) is {'very similar' if mc > 0.8 else 'moderately similar' if mc > 0.5 else 'somewhat different'} (cosine={mc:.2f})"
+                        if mc > 0 else "No macro data available for this pair"
                     ),
                 },
                 "cooccurrence": {
@@ -177,6 +186,7 @@ class SubstitutionGraph:
                 f"{a} and {b} have an overall similarity score of {score:.2f}. "
                 f"They share {shared} flavour molecules. "
                 + (f"Nutritional profiles are cosine-similar at {nt:.2f}. " if nt > 0 else "")
+                + (f"Macro balance is cosine-similar at {mc:.2f}. " if mc > 0 else "")
                 + (f"Co-occur in recipes at {co:.2f}. " if co > 0 else "")
             ),
         }
@@ -194,15 +204,17 @@ class SubstitutionGraph:
         """
         cuisine_path = DATA_PROC / "foodcom_cuisines.csv"
 
-        # ── Full cuisine filter when Food.com cuisine data is available ────────
+        # ── Full cuisine filter when ingredient-level cuisine data is available ─
         if cuisine_path.exists():
             cuisine_df = pd.read_csv(cuisine_path)
-            cuisine_ingredients = set(
-                cuisine_df[cuisine_df["cuisine"].str.lower() == cuisine.lower()]["canonical_name"]
-            )
-            subs = self.substitutes(ingredient, avoid_allergens, top_n * 3)
-            subs = subs[subs["substitute"].isin(cuisine_ingredients)]
-            return subs.head(top_n)
+            if "canonical_name" in cuisine_df.columns:
+                cuisine_ingredients = set(
+                    cuisine_df[cuisine_df["cuisine"].str.lower() == cuisine.lower()]["canonical_name"]
+                )
+                subs = self.substitutes(ingredient, avoid_allergens, top_n * 3)
+                subs = subs[subs["substitute"].isin(cuisine_ingredients)]
+                return subs.head(top_n)
+            # foodcom_cuisines.csv is recipe-level (no canonical_name) — fall through
 
         # ── Fallback: use FlavorDB category + Food.com recipe count ───────────
         subs = self.substitutes(ingredient, avoid_allergens, top_n * 3)
