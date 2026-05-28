@@ -32,6 +32,22 @@ FUZZY_THRESHOLD = 85   # minimum score for fuzzy root matching (using token_sort
 # "essentialoil" — industrial flavor extracts not used in home cooking
 NON_INGREDIENT_CATEGORIES = {"dish", "essentialoil"}
 
+# FlavorDB entity names that are category/group labels or taxonomic names,
+# not specific ingredients a patient would use in a recipe.
+NON_INGREDIENT_NAMES = {
+    # Generic category labels
+    "Bakery Products", "Dairy Products", "Fish", "Meat", "Shellfish", "Beans",
+    "Nuts", "Mixed nuts",
+    # Vague aggregate groups
+    "Fatty Fish", "Lean Fish", "Smoked Fish", "Other Cheeses",
+    "Other meat product", "Other fish product", "Other fermented milk",
+    "Other bread product",
+    # Scientific taxonomy / fish family names (not ingredient names)
+    "Salmonidae", "Clupeinae", "Percoidei", "Perciformes", "Bivalvia",
+    "Anguilliformes", "Gadiformes", "Scombridae", "Pleuronectidae",
+    "Cetacea", "Cichlidae",
+}
+
 
 def load_canonical() -> pd.DataFrame:
     df = pd.read_csv(FLAVORDB_ENTITIES_CSV,
@@ -43,7 +59,8 @@ def load_canonical() -> pd.DataFrame:
     })
     before = len(df)
     df = df[~df["flavordb_category"].isin(NON_INGREDIENT_CATEGORIES)].copy()
-    print(f"  Excluded {before - len(df)} non-ingredient entries (dish, essentialoil)")
+    df = df[~df["canonical_name"].isin(NON_INGREDIENT_NAMES)].copy()
+    print(f"  Excluded {before - len(df)} non-ingredient entries")
     df["canonical_name_lower"] = df["canonical_name"].str.lower().str.strip()
     return df
 
