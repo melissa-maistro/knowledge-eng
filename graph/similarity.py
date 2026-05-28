@@ -28,6 +28,17 @@ MACRO_NUTRIENTS = ["Protein", "Total lipid (fat)", "Carbohydrate, by difference"
 CANONICAL_FILE  = DATA_PROC / "canonical_ingredients.csv"
 
 
+def normalize_fat_key(nt: pd.DataFrame) -> pd.DataFrame:
+    """Merge 'Total fat (NLEA)' into 'Total lipid (fat)' for subjects that
+    only report the NLEA key (e.g. pure oils). Avoids silently dropping all
+    oil ingredients from macro/nutrition similarity."""
+    nlea = nt[nt["relation_target"] == "Total fat (NLEA)"].copy()
+    has_lipid = set(nt[nt["relation_target"] == "Total lipid (fat)"]["subject"])
+    nlea = nlea[~nlea["subject"].isin(has_lipid)]
+    nlea["relation_target"] = "Total lipid (fat)"
+    return pd.concat([nt, nlea], ignore_index=True)
+
+
 def load_canonical_names() -> set:
     if not CANONICAL_FILE.exists():
         print("  WARNING: canonical_ingredients.csv not found.")
@@ -68,7 +79,7 @@ def nutrition_similarity(canonical_names: set, top_n=10000) -> pd.DataFrame:
         print("  Nutrients file not found — skipping nutrition similarity")
         return pd.DataFrame(columns=["ingredient_a","ingredient_b","nutrition_score"])
 
-    nt = pd.read_csv(TRIPLE_NUTRIENTS)
+    nt = normalize_fat_key(pd.read_csv(TRIPLE_NUTRIENTS))
 
     if CANONICAL_FILE.exists():
         canon = pd.read_csv(CANONICAL_FILE)[["canonical_name","usda_description"]].dropna()
@@ -108,7 +119,7 @@ def macro_similarity(canonical_names: set) -> pd.DataFrame:
         print("  Nutrients file not found — skipping macro similarity")
         return pd.DataFrame(columns=["ingredient_a", "ingredient_b", "macro_score"])
 
-    nt = pd.read_csv(TRIPLE_NUTRIENTS)
+    nt = normalize_fat_key(pd.read_csv(TRIPLE_NUTRIENTS))
 
     if CANONICAL_FILE.exists():
         canon = pd.read_csv(CANONICAL_FILE)[["canonical_name", "usda_description"]].dropna()
@@ -208,12 +219,16 @@ def run():
             u_a, u_b = usda_cat.get(a), usda_cat.get(b)
             fa, fb   = fdb_cat.get(a),  fdb_cat.get(b)
 
-            # 1. functional_class — hard gate when both have it; different macro
-            #    class means never substitutable regardless of other signals
+            # 1. functional_class — hard gate when both have it
             if pd.notna(f_a) and pd.notna(f_b):
                 if f_a != f_b:
                     return False
-                # same functional class: fall through to finer checks
+                # fat_source and protein_source substitute freely across
+                # subcategories (dairy fat ↔ plant fat, chicken ↔ beef).
+                # carb_source and mixed require finer checks because
+                # "Vegetables" groups unrelated items (tuber vs fruit-berry).
+                if f_a in ("fat_source", "protein_source"):
+                    return True
 
             # 2. AND logic: when all four labels are available, require both
             #    usda_category AND flavordb_category to match — prevents broad

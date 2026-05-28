@@ -204,6 +204,13 @@ def derive_functional_class(canonical: pd.DataFrame) -> pd.DataFrame:
         return canonical
 
     nt = pd.read_csv(TRIPLE_NUTRIENTS)
+    # Merge "Total fat (NLEA)" into FAT_KEY for subjects (e.g. pure oils)
+    # that only report the NLEA fat value.
+    nlea = nt[nt["relation_target"] == "Total fat (NLEA)"].copy()
+    has_lipid = set(nt[nt["relation_target"] == FAT_KEY]["subject"])
+    nlea = nlea[~nlea["subject"].isin(has_lipid)]
+    nlea["relation_target"] = FAT_KEY
+    nt = pd.concat([nt, nlea], ignore_index=True)
     macros = nt[nt["relation_target"].isin([FAT_KEY, PROT_KEY, CARB_KEY])].copy()
 
     pivot = macros.pivot_table(
