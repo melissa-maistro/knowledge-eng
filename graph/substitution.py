@@ -46,24 +46,21 @@ class PatientConsultation(SubstitutionGraph):
             print("  WARNING: nutrients.csv not found")
             return
             
-        # Map USDA descriptions to canonical names
+        # Join nutrients onto canonical names via usda_description (merge to handle
+        # multiple canonicals sharing the same USDA description correctly)
         canon_df = pd.read_csv(DATA_PROC / "canonical_ingredients.csv")
-        usda_to_canon = {}
-        for _, row in canon_df.dropna(subset=["usda_description"]).iterrows():
-            usda_to_canon[row["usda_description"]] = row["canonical_name"].strip()
-            
+        canon_usda = canon_df[["canonical_name", "usda_description"]].dropna()
         nut_df = pd.read_csv(TRIPLE_NUTRIENTS)
+        merged = nut_df.merge(canon_usda, left_on="subject", right_on="usda_description", how="inner")
         nut_count = 0
-        for _, row in nut_df.iterrows():
-            usda_desc = row["subject"]
-            if usda_desc in usda_to_canon:
-                node = usda_to_canon[usda_desc]
-                if node in self.G.nodes:
-                    if "nutrients" not in self.G.nodes[node]:
-                        self.G.nodes[node]["nutrients"] = {}
-                    self.G.nodes[node]["nutrients"][row["relation_target"]] = float(row["amount"])
-                    nut_count += 1
-                    
+        for _, row in merged.iterrows():
+            node = row["canonical_name"].strip()
+            if node in self.G.nodes:
+                if "nutrients" not in self.G.nodes[node]:
+                    self.G.nodes[node]["nutrients"] = {}
+                self.G.nodes[node]["nutrients"][row["relation_target"]] = float(row["amount"])
+                nut_count += 1
+
         print(f"  Loaded {nut_count} nutrient values for canonical nodes.")
 
     def _filter_by_role(self, subs_df: pd.DataFrame, role: str) -> pd.DataFrame:

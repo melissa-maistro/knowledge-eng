@@ -1,0 +1,20 @@
+ingredient,substitute,context,notes
+Butter,Olive,dairy-free,classic fat swap for dairy allergy
+Butter,Corn Oil,dairy-free,neutral-flavour plant fat
+Butter,Peanut Oil,dairy-free,plant fat substitute
+Butter,Avocado,dairy-free,unsaturated fat source
+Wheat,Rice,gluten-free,staple gluten-free starch
+Wheat,Oats,gluten-free,common gluten-free grain
+Wheat,Quinoa,gluten-free,high-protein gluten-free grain
+Wheat,Sorghum,gluten-free,gluten-free cereal grain
+Rye,Rice,gluten-free,gluten-free alternative to rye bread
+Rye,Quinoa,gluten-free,gluten-free grain swap
+Barley,Rice,gluten-free,gluten-free swap for barley in soups/stews
+Oats,Quinoa,gluten-free,both used as breakfast grains
+Chicken,Turkey,protein-swap,lean poultry swap
+Beef,Lamb,protein-swap,red meat swap
+Beef,Pork,protein-swap,red meat swap
+Almond,Hazelnut,nut-swap,tree nut swap
+Almond,Cashew nut,nut-swap,tree nut swap
+Walnut,Pecans,nut-swap,tree nut swap
+Walnut,Hazelnut,nut-swap,tree nut swap

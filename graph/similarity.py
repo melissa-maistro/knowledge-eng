@@ -17,10 +17,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from config import (FLAVORDB_LINKS_CSV, TRIPLE_NUTRIENTS,
                     TRIPLE_COOCCURRENCE, TRIPLE_SIMILARITY, DATA_PROC)
 
-W_FLAVOUR       = 0.45
-W_NUTRITION     = 0.25
-W_MACRO         = 0.10
-W_COOCCURRENCE  = 0.20
+W_FLAVOUR       = 0.05
+W_NUTRITION     = 0.75
+W_MACRO         = 0.20
+W_COOCCURRENCE  = 0.00
 MIN_SCORE       = 0.15
 
 MACRO_NUTRIENTS = ["Protein", "Total lipid (fat)", "Carbohydrate, by difference"]
@@ -74,18 +74,24 @@ def flavour_similarity(canonical_names: set) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _map_nutrients_to_canonical(nt: pd.DataFrame) -> pd.DataFrame:
+    """Join nutrients onto canonical names via usda_description.
+    Uses a merge instead of dict mapping so multiple canonical ingredients
+    that share the same USDA description each get their own rows."""
+    if not CANONICAL_FILE.exists():
+        return nt
+    canon = pd.read_csv(CANONICAL_FILE)[["canonical_name", "usda_description"]].dropna()
+    merged = nt.merge(canon, left_on="subject", right_on="usda_description", how="inner")
+    merged["subject"] = merged["canonical_name"]
+    return merged.drop(columns=["canonical_name", "usda_description"])
+
+
 def nutrition_similarity(canonical_names: set, top_n=10000) -> pd.DataFrame:
     if not TRIPLE_NUTRIENTS.exists():
         print("  Nutrients file not found — skipping nutrition similarity")
         return pd.DataFrame(columns=["ingredient_a","ingredient_b","nutrition_score"])
 
-    nt = normalize_fat_key(pd.read_csv(TRIPLE_NUTRIENTS))
-
-    if CANONICAL_FILE.exists():
-        canon = pd.read_csv(CANONICAL_FILE)[["canonical_name","usda_description"]].dropna()
-        desc_to_canon = dict(zip(canon["usda_description"], canon["canonical_name"]))
-        nt["subject"] = nt["subject"].map(desc_to_canon).fillna(nt["subject"])
-
+    nt = _map_nutrients_to_canonical(normalize_fat_key(pd.read_csv(TRIPLE_NUTRIENTS)))
     nt = nt[nt["subject"].isin(canonical_names)]
 
     if nt.empty:
@@ -119,13 +125,7 @@ def macro_similarity(canonical_names: set) -> pd.DataFrame:
         print("  Nutrients file not found — skipping macro similarity")
         return pd.DataFrame(columns=["ingredient_a", "ingredient_b", "macro_score"])
 
-    nt = normalize_fat_key(pd.read_csv(TRIPLE_NUTRIENTS))
-
-    if CANONICAL_FILE.exists():
-        canon = pd.read_csv(CANONICAL_FILE)[["canonical_name", "usda_description"]].dropna()
-        desc_to_canon = dict(zip(canon["usda_description"], canon["canonical_name"]))
-        nt["subject"] = nt["subject"].map(desc_to_canon).fillna(nt["subject"])
-
+    nt = _map_nutrients_to_canonical(normalize_fat_key(pd.read_csv(TRIPLE_NUTRIENTS)))
     nt = nt[nt["subject"].isin(canonical_names) & nt["relation_target"].isin(MACRO_NUTRIENTS)]
 
     if nt.empty:
