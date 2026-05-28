@@ -35,14 +35,6 @@ goal_options = [
     {"label": "Carbohydrates", "value": "carbs"},
 ]
 
-role_options = [
-    {"label": "Auto-detect", "value": "auto"},
-    {"label": "Fat / Cooking fat", "value": "fat"},
-    {"label": "Protein", "value": "protein"},
-    {"label": "Carb / Starch", "value": "carb"},
-    {"label": "No role filter", "value": ""},
-]
-
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.FLATLY])
 app.title = "Recipe Substitution KG"
 
@@ -78,14 +70,6 @@ app.layout = dbc.Container([
                         className="mb-3"
                     ),
                     
-                    html.Label("Culinary Role:"),
-                    dcc.Dropdown(
-                        id="input-role",
-                        options=role_options,
-                        value="auto",
-                        clearable=False,
-                        className="mb-3"
-                    ),
 
                     html.Label("Nutritional Goals (Reduce):"),
                     dcc.Dropdown(
@@ -118,17 +102,10 @@ app.layout = dbc.Container([
     State("input-ingredient", "value"),
     State("input-allergies", "value"),
     State("input-goals", "value"),
-    State("input-role", "value"),
 )
-def update_results(n_clicks, ingredient, allergies, goals, role):
+def update_results(n_clicks, ingredient, allergies, goals):
     if not ingredient:
         return html.Div("Please select an ingredient to search.", className="text-muted")
-
-    # Auto-detect role from ingredient's functional_class
-    resolved_role = role or ""
-    if resolved_role == "auto":
-        fc = pc.G.nodes.get(ingredient, {}).get("functional_class")
-        resolved_role = (str(fc).replace("_source", "") if isinstance(fc, str) else "")
 
     patient = {
         "allergies": allergies or [],
@@ -137,7 +114,7 @@ def update_results(n_clicks, ingredient, allergies, goals, role):
 
     data = pc.get_consultation_data(
         ingredient, patient,
-        recipe_context={"role": resolved_role},
+        recipe_context={"role": ""},
         top_n=5,
     )
     
