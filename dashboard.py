@@ -1,12 +1,18 @@
 import dash
 from dash import dcc, html, Input, Output, State
 import dash_bootstrap_components as dbc
+import pandas as pd
 from graph.substitution import PatientConsultation
+from config import TRIPLE_SIMILARITY
 
 # Initialize the knowledge graph
 print("Initializing Knowledge Graph...")
 pc = PatientConsultation()
-ingredients_list = sorted([str(n) for n in pc.G.nodes])
+
+# Only expose ingredients that have at least one substitute (no-allergy baseline)
+_sim = pd.read_csv(TRIPLE_SIMILARITY)
+_nodes_with_subs = set(_sim["ingredient_a"]) | set(_sim["ingredient_b"])
+ingredients_list = sorted(n for n in pc.G.nodes if n in _nodes_with_subs)
 
 # Options for Dropdowns
 allergy_options = [
