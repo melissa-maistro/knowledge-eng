@@ -117,7 +117,7 @@ def main():
     print(f"Gold standard: {len(gold)} pairs")
 
     # Baseline: current weights (tuned via grid search 2026-05-28)
-    current = (0.05, 0.75, 0.20, 0.00)
+    current = (0.00, 0.05, 0.90, 0.05)
     baseline = evaluate(sim, gold, current)
     print(f"\nCurrent weights (f={current[0]}, n={current[1]}, m={current[2]}, c={current[3]}):")
     print(f"  MRR={baseline['MRR']:.4f}  H@5={baseline['H@5']:.4f}  H@10={baseline['H@10']:.4f}")

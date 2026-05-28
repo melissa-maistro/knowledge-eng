@@ -17,10 +17,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from config import (FLAVORDB_LINKS_CSV, TRIPLE_NUTRIENTS,
                     TRIPLE_COOCCURRENCE, TRIPLE_SIMILARITY, DATA_PROC)
 
-W_FLAVOUR       = 0.05
-W_NUTRITION     = 0.75
-W_MACRO         = 0.20
-W_COOCCURRENCE  = 0.00
+W_FLAVOUR       = 0.00
+W_NUTRITION     = 0.05
+W_MACRO         = 0.90
+W_COOCCURRENCE  = 0.05
 MIN_SCORE       = 0.15
 
 MACRO_NUTRIENTS = ["Protein", "Total lipid (fat)", "Carbohydrate, by difference"]
@@ -240,6 +240,24 @@ def run():
                         return a_ok and b_ok
                     return True
                 if f_a == "protein_source":
+                    # Keep meat/fish within the animal-protein group; dairy proteins
+                    # (different fdb category) are handled separately via the fdb gate.
+                    ANIMAL_FDB = {"meat", "fishseafood-fish", "fishseafood-shellfish",
+                                  "fishseafood-other"}
+                    a_animal = pd.notna(fa) and fa in ANIMAL_FDB
+                    b_animal = pd.notna(fb) and fb in ANIMAL_FDB
+                    # If both have known fdb categories, require same group
+                    if (pd.notna(fa) and pd.notna(fb)):
+                        return a_animal == b_animal  # both animal or both non-animal
+                    return True
+                if f_a == "carb_source":
+                    # Allow vegetable-tuber ↔ vegetable-root (starchy roots and tubers
+                    # are culinarily interchangeable — Potato, Sweet Potato, Cassava etc.)
+                    VEG_STARCH = {"vegetable-tuber", "vegetable-root"}
+                    if pd.notna(fa) and pd.notna(fb):
+                        if fa in VEG_STARCH and fb in VEG_STARCH:
+                            return True
+                        return fa == fb
                     return True
 
             # 2. AND logic: when all four labels are available, require both
