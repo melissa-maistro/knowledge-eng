@@ -17,10 +17,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from config import (FLAVORDB_LINKS_CSV, TRIPLE_NUTRIENTS,
                     TRIPLE_COOCCURRENCE, TRIPLE_SIMILARITY, DATA_PROC)
 
-W_FLAVOUR       = 0.50
-W_NUTRITION     = 0.30
+W_FLAVOUR       = 0.45
+W_NUTRITION     = 0.25
+W_MACRO         = 0.10
 W_COOCCURRENCE  = 0.20
 MIN_SCORE       = 0.15
+
+MACRO_NUTRIENTS = ["Protein", "Total lipid (fat)", "Carbohydrate, by difference"]
 
 CANONICAL_FILE  = DATA_PROC / "canonical_ingredients.csv"
 
@@ -100,6 +103,41 @@ def nutrition_similarity(canonical_names: set, top_n=10000) -> pd.DataFrame:
     return df
 
 
+def macro_similarity(canonical_names: set) -> pd.DataFrame:
+    if not TRIPLE_NUTRIENTS.exists():
+        print("  Nutrients file not found — skipping macro similarity")
+        return pd.DataFrame(columns=["ingredient_a", "ingredient_b", "macro_score"])
+
+    nt = pd.read_csv(TRIPLE_NUTRIENTS)
+
+    if CANONICAL_FILE.exists():
+        canon = pd.read_csv(CANONICAL_FILE)[["canonical_name", "usda_description"]].dropna()
+        desc_to_canon = dict(zip(canon["usda_description"], canon["canonical_name"]))
+        nt["subject"] = nt["subject"].map(desc_to_canon).fillna(nt["subject"])
+
+    nt = nt[nt["subject"].isin(canonical_names) & nt["relation_target"].isin(MACRO_NUTRIENTS)]
+
+    if nt.empty:
+        print("  No macro data matched — skipping macro similarity")
+        return pd.DataFrame(columns=["ingredient_a", "ingredient_b", "macro_score"])
+
+    pivot = nt.pivot_table(index="subject", columns="relation_target",
+                           values="amount", aggfunc="mean").fillna(0)
+    pivot = pivot.reindex(columns=MACRO_NUTRIENTS, fill_value=0)
+    matrix = normalize(pivot.values)
+    sim = cosine_similarity(matrix)
+    names = pivot.index.tolist()
+    rows = []
+    for i in range(len(names)):
+        for j in range(i + 1, len(names)):
+            s = float(sim[i, j])
+            if s > 0:
+                rows.append({"ingredient_a": names[i], "ingredient_b": names[j], "macro_score": round(s, 4)})
+    df = pd.DataFrame(rows)
+    print(f"  {len(df)} macro pairs")
+    return df
+
+
 def cooccurrence_similarity(canonical_names: set) -> pd.DataFrame:
     if not TRIPLE_COOCCURRENCE.exists():
         print("  Co-occurrence file not found — skipping")
@@ -138,15 +176,20 @@ def run():
     nt = nutrition_similarity(canonical_names)
     nt["pair"] = nt.apply(lambda r: canonical_pair(r.ingredient_a, r.ingredient_b), axis=1)
 
+    print("\nComputing macro similarity...")
+    mc = macro_similarity(canonical_names)
+    mc["pair"] = mc.apply(lambda r: canonical_pair(r.ingredient_a, r.ingredient_b), axis=1)
+
     print("\nLoading co-occurrence...")
     co = cooccurrence_similarity(canonical_names)
     co["pair"] = co.apply(lambda r: canonical_pair(r.ingredient_a, r.ingredient_b), axis=1)
 
     print("\nCombining signals...")
     merged = fl.merge(nt[["pair","nutrition_score"]], on="pair", how="outer")
+    merged = merged.merge(mc[["pair","macro_score"]], on="pair", how="outer")
     merged = merged.merge(co[["pair","cooccurrence_score"]], on="pair", how="outer")
 
-    for col in ["flavour_score","nutrition_score","cooccurrence_score"]:
+    for col in ["flavour_score","nutrition_score","macro_score","cooccurrence_score"]:
         merged[col] = merged.get(col, 0).fillna(0.0)
     merged["shared_molecules"] = merged.get("shared_molecules", 0).fillna(0).astype(int)
 
@@ -165,15 +208,23 @@ def run():
             u_a, u_b = usda_cat.get(a), usda_cat.get(b)
             fa, fb   = fdb_cat.get(a),  fdb_cat.get(b)
 
-            # 1. Functional class (data-driven from macronutrients) — best signal
+            # 1. functional_class — hard gate when both have it; different macro
+            #    class means never substitutable regardless of other signals
             if pd.notna(f_a) and pd.notna(f_b):
-                return f_a == f_b
+                if f_a != f_b:
+                    return False
+                # same functional class: fall through to finer checks
 
-            # 2. USDA category — if one or both have no functional_class
+            # 2. AND logic: when all four labels are available, require both
+            #    usda_category AND flavordb_category to match — prevents broad
+            #    USDA groups (e.g. "Vegetables") from pairing unrelated items
+            #    like Cassava (vegetable-tuber) with Cherry tomato (fruit-berry)
+            if pd.notna(u_a) and pd.notna(u_b) and pd.notna(fa) and pd.notna(fb):
+                return u_a == u_b and fa == fb
+
+            # 3. Single-category fallback when only one source is available
             if pd.notna(u_a) and pd.notna(u_b):
                 return u_a == u_b
-
-            # 3. FlavorDB category — fallback for ingredients not in USDA
             if pd.notna(fa) and pd.notna(fb):
                 return fa == fb
 
@@ -186,24 +237,22 @@ def run():
     else:
         print("  WARNING: canonical_ingredients.csv not found, skipping category filter.")
 
-    def compute_score(row):
-        base_score = W_FLAVOUR * row['flavour_score'] + W_NUTRITION * row['nutrition_score'] + W_COOCCURRENCE * row['cooccurrence_score']
-        # If we have NO nutritional data/similarity, penalize the score by 50%
-        # to prevent purely flavor-based noisy suggestions.
-        if row['nutrition_score'] == 0:
-            return base_score * 0.5
-        return base_score
-
-    merged["score"] = merged.apply(compute_score, axis=1).round(4)
+    merged["score"] = (
+        W_FLAVOUR      * merged["flavour_score"] +
+        W_NUTRITION    * merged["nutrition_score"] +
+        W_MACRO        * merged["macro_score"] +
+        W_COOCCURRENCE * merged["cooccurrence_score"]
+    ).round(4)
 
     merged["reason"] = merged.apply(lambda r:
         f"Flavour:{r['flavour_score']:.2f} ({r['shared_molecules']} shared molecules); "
         f"Nutrition:{r['nutrition_score']:.2f}; "
+        f"Macro:{r['macro_score']:.2f}; "
         f"Co-occurrence:{r['cooccurrence_score']:.2f}", axis=1)
 
     out = merged[merged["score"] >= MIN_SCORE][
         ["ingredient_a","ingredient_b","score",
-         "flavour_score","nutrition_score","cooccurrence_score",
+         "flavour_score","nutrition_score","macro_score","cooccurrence_score",
          "shared_molecules","reason"]
     ].sort_values("score", ascending=False).reset_index(drop=True)
 
