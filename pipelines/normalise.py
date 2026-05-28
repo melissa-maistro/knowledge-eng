@@ -90,7 +90,22 @@ def match_usda(canonical: pd.DataFrame) -> pd.DataFrame:
         "beef": "beef, chuck, roast, boneless, choice, raw"
     }
 
+    # Ingredients with no valid USDA match — skip fuzzy matching entirely
+    # to prevent spurious matches (e.g. "white wine" → "cheese, dry white")
+    NO_USDA_MATCH = {
+        "white wine", "red wine", "wine", "beer", "champagne",
+        "spirit", "liqueur", "vodka", "rum", "whiskey",
+    }
+
     for name_lower in canonical["canonical_name_lower"]:
+        # -1 — Explicit no-match list
+        if name_lower in NO_USDA_MATCH:
+            usda_fdc_ids.append(None)
+            usda_descs.append(None)
+            usda_categories.append(None)
+            usda_scores.append(None)
+            continue
+
         # 0 — Manual overrides
         if name_lower in MANUAL_OVERRIDES:
             exact = foundation[foundation["desc_lower"] == MANUAL_OVERRIDES[name_lower]]
