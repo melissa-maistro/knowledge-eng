@@ -29,6 +29,14 @@ goal_options = [
     {"label": "Carbohydrates", "value": "carbs"},
 ]
 
+role_options = [
+    {"label": "Auto-detect", "value": "auto"},
+    {"label": "Fat / Cooking fat", "value": "fat"},
+    {"label": "Protein", "value": "protein"},
+    {"label": "Carb / Starch", "value": "carb"},
+    {"label": "No role filter", "value": ""},
+]
+
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.FLATLY])
 app.title = "Recipe Substitution KG"
 
@@ -64,6 +72,15 @@ app.layout = dbc.Container([
                         className="mb-3"
                     ),
                     
+                    html.Label("Culinary Role:"),
+                    dcc.Dropdown(
+                        id="input-role",
+                        options=role_options,
+                        value="auto",
+                        clearable=False,
+                        className="mb-3"
+                    ),
+
                     html.Label("Nutritional Goals (Reduce):"),
                     dcc.Dropdown(
                         id="input-goals",
@@ -72,7 +89,7 @@ app.layout = dbc.Container([
                         placeholder="Select nutrients to reduce...",
                         className="mb-4"
                     ),
-                    
+
                     dbc.Button("Find Substitutes", id="btn-search", color="primary", className="w-100")
                 ])
             ], className="shadow-sm")
@@ -94,18 +111,29 @@ app.layout = dbc.Container([
     Input("btn-search", "n_clicks"),
     State("input-ingredient", "value"),
     State("input-allergies", "value"),
-    State("input-goals", "value")
+    State("input-goals", "value"),
+    State("input-role", "value"),
 )
-def update_results(n_clicks, ingredient, allergies, goals):
+def update_results(n_clicks, ingredient, allergies, goals, role):
     if not ingredient:
         return html.Div("Please select an ingredient to search.", className="text-muted")
-        
+
+    # Auto-detect role from ingredient's functional_class
+    resolved_role = role or ""
+    if resolved_role == "auto":
+        fc = pc.G.nodes.get(ingredient, {}).get("functional_class", "")
+        resolved_role = (fc or "").replace("_source", "")  # "fat_source" → "fat"
+
     patient = {
         "allergies": allergies or [],
         "goals": {"reduce": goals or []}
     }
-    
-    data = pc.get_consultation_data(ingredient, patient, recipe_context={}, top_n=5)
+
+    data = pc.get_consultation_data(
+        ingredient, patient,
+        recipe_context={"role": resolved_role},
+        top_n=5,
+    )
     
     if not data["success"]:
         return dbc.Alert(data["message"], color="danger")
@@ -149,8 +177,17 @@ def update_results(n_clicks, ingredient, allergies, goals):
         card = dbc.Card(dbc.CardBody(card_body), className="mb-3 shadow-sm")
         cards.append(card)
         
+    hint = None
+    if not allergies:
+        hint = dbc.Alert(
+            "💡 No allergies selected — results include all nutritionally similar foods. "
+            "Add an allergy (e.g. Dairy for Butter) to filter to safe alternatives.",
+            color="light", className="mb-3 border"
+        )
+
     return html.Div([
         html.H4(f"Substitutes for '{data['target']}'", className="mb-4"),
+        *([] if hint is None else [hint]),
         *cards
     ])
 
