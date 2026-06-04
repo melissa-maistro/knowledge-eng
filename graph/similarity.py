@@ -17,9 +17,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from config import (FLAVORDB_LINKS_CSV, TRIPLE_NUTRIENTS,
                     TRIPLE_COOCCURRENCE, TRIPLE_SIMILARITY, DATA_PROC)
 
-W_FLAVOUR       = 0.00
+W_FLAVOUR       = 0.05
 W_NUTRITION     = 0.05
-W_MACRO         = 0.90
+W_MACRO         = 0.85
 W_COOCCURRENCE  = 0.05
 MIN_SCORE       = 0.15
 

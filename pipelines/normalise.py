@@ -292,7 +292,7 @@ def derive_functional_class(canonical: pd.DataFrame) -> pd.DataFrame:
         # ingredient (>= 400 kcal) which is legitimately a pure fat source.
         # Prevents sparse-data ingredients (e.g. a vegetable whose USDA record
         # only has protein) from being misclassified as protein_source.
-        nonzero = (row["fat_g"] > 0) + (row["prot_g"] > 0) + (row["carb_g"] > 0)
+        nonzero = int(row["fat_g"] > 0) + int(row["prot_g"] > 0) + int(row["carb_g"] > 0)
         if nonzero < 2 and row["total_kcal"] < 400:
             return None
         fat_pct  = row["fat_kcal"]  / row["total_kcal"]
