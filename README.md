@@ -129,6 +129,15 @@ Opens at `http://127.0.0.1:8050`.
 
 ---
 
+## Knowledge graph
+
+The knowledge graph can be visualized with:
+
+```bash
+python visualize.py
+```
+---
+
 ## Setup
 
 ```bash
